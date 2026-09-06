@@ -205,6 +205,10 @@
     transition: filter .12s ease;
   }
   .picker .pick:hover { filter: brightness(1.12); }
+  .picker .pick-all {
+    background: var(--sage); color: var(--on-sage);
+    margin-top: 3px;
+  }
   .picker .cancel {
     display: block; width: 100%; margin-top: 2px;
     background: transparent; color: var(--green);
@@ -326,19 +330,27 @@
     },
     setBusy(busy) { controls.forEach(c => c.disabled = !!busy); },
     clearEntry() { $("entry").value = ""; },
-    showPicker(labels) {
+    showPicker(labels, allowAll) {
       const list = $("pickList");
       list.innerHTML = "";
+      const choose = (val) => {
+        $("overlay").classList.remove("show");
+        callApi("resolve_pick", val);
+      };
       labels.forEach((label, i) => {
         const b = document.createElement("button");
         b.className = "pick";
         b.textContent = label;
-        b.addEventListener("click", () => {
-          $("overlay").classList.remove("show");
-          callApi("resolve_pick", i);
-        });
+        b.addEventListener("click", () => choose(i));
         list.appendChild(b);
       });
+      if (allowAll) {
+        const b = document.createElement("button");
+        b.className = "pick pick-all";
+        b.textContent = "Open ALL " + labels.length + " tickets";
+        b.addEventListener("click", () => choose("all"));
+        list.appendChild(b);
+      }
       $("overlay").classList.add("show");
     },
   };

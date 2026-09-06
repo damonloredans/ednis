@@ -216,6 +216,56 @@ def detect_order_number(log=print, pick_page=None) -> str | None:
         return _read_order_number(page)
 
 
+def detect_order_numbers(log=print, pick_page=None) -> list[str]:
+    """Like detect_order_number, but the ticket picker also offers "open all" —
+    so several eDesk tickets can be pushed to NetSuite in one go. Returns the
+    NetSuite search queries (deduped, order preserved); may be empty.
+
+    `pick_page` is called as `pick_page(labels, allow_all=True)` and may return
+    an index, the string "all", or None (cancelled)."""
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.connect_over_cdp(CDP_URL)
+        except Exception as e:
+            raise RuntimeError(
+                "Can't reach Chrome on port 9222. Run launch_chrome_debug.bat "
+                "first and make sure a ticket is open in that window."
+            ) from e
+
+        context = browser.contexts[0]
+        if not _find_edesk_pages(context):
+            raise NoTicketTabsError(
+                "No eDesk tab found in the automation Chrome window. Open the "
+                "ticket there first."
+            )
+
+        candidates = [
+            pg for pg in _find_edesk_pages(context)
+            if _read_order_number(pg) is not None
+        ]
+        if not candidates:
+            log("No open ticket has an ORDER NO. field (probably pre-sales).")
+            return []
+
+        if len(candidates) == 1 or pick_page is None:
+            chosen = [candidates[0]]
+        else:
+            labels = [_page_label(pg) for pg in candidates]
+            picked = pick_page(labels, allow_all=True)
+            if picked is None:
+                raise RuntimeError("Cancelled — no ticket selected.")
+            chosen = candidates if picked == "all" else [candidates[picked]]
+
+        queries, seen = [], set()
+        for pg in chosen:
+            log(f"Reading order number from: {pg.url}")
+            q = _read_order_number(pg)
+            if q and q not in seen:
+                seen.add(q)
+                queries.append(q)
+        return queries
+
+
 def detect_ecom_number(log=print, pick_page=None) -> str | None:
     """Reads the number after '#' in a pre-sales ticket's subject line (there's
     no ORDER NO. field yet on these — just an ecom record number)."""

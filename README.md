@@ -27,8 +27,10 @@ what you want, and hit **Open Selected**. The app then:
 | **Tracking** | Reads `TRACKING NO.` + carrier off the ticket, opens the carrier's tracking page (USPS / UPS / Amazon / FedEx / DHL). |
 | **Ecom Record (Pre-Sales)** | For pre-sales tickets with no order yet: reads the `#number` from the subject, opens the Ecom Record and its PARENT record. |
 
-If more than one ticket tab is open, it asks which one to use. If no order number
-is found, there's a manual entry box (Sales Order / RA only).
+If more than one ticket tab is open, it asks which one to use — or, for the
+Sales Order / Return Auth flow, **Open ALL N tickets** to push every open
+ticket's order to NetSuite in one pass. If no order number is found, there's a
+manual entry box (Sales Order / RA only).
 
 ## Files
 
@@ -146,10 +148,11 @@ Dependencies (from `requirements.txt`): `playwright`, `pywebview`.
 account number. This is the only value you must change; the Python code finds
 the NetSuite tab by domain, so it's account-agnostic.
 
-**Only if global search fails:** `netsuite_bridge.py` → `SEARCH_INPUT_SELECTORS`
-(lines 14–21). The first selectors are generic and usually match; the last is a
-brittle absolute XPath from one account's DOM. Adjust only if you get the
-*"Could not find the NetSuite global search box"* error.
+**Only if global search fails:** `netsuite_bridge.py` → `SEARCH_INPUT_SELECTORS`.
+It matches the global search box by its `placeholder="Search"`; the tool also
+skips NetSuite tabs that don't have a search box (Task / Media Item pages), so
+having several NetSuite tabs open is fine. Adjust the selectors only if you get
+the *"Could not find the NetSuite global search box"* error.
 
 ---
 
@@ -237,5 +240,6 @@ is Windows-specific.
 | *Can't reach Chrome on port 9222* | Run `launch_chrome_debug.bat` first; keep that window open. |
 | *No eDesk tab found* | Open the ticket in the automation Chrome window (not your normal Chrome). |
 | *No NetSuite tab found* | Open your NetSuite dashboard in the automation window. |
+| *No NetSuite tab with the global search bar* | Open your NetSuite dashboard (or any standard record page) in the automation window — Task / Media Item pages don't have the search bar. |
 | *Could not find the NetSuite global search box* | The search selectors need updating for your NetSuite theme — see `SEARCH_INPUT_SELECTORS` in `netsuite_bridge.py`. |
 | *No Sales Order result showed up* | Double-check the order number; try the manual entry box. |

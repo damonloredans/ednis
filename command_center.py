@@ -12,7 +12,7 @@ import threading
 
 import webview
 
-from edesk_bridge import detect_ecom_number, detect_order_number, open_tracking_page
+from edesk_bridge import detect_ecom_number, detect_order_numbers, open_tracking_page
 from netsuite_bridge import (
     open_ecom_record,
     open_return_auths,
@@ -53,12 +53,13 @@ class Api:
     def _busy(self, is_busy):
         self._js("setBusy", is_busy)
 
-    def _pick_page(self, labels):
+    def _pick_page(self, labels, allow_all=False):
         """Blocks the worker thread until the user picks a ticket in the page's
-        overlay (or cancels). Mirrors the old Tk popup behavior."""
+        overlay (or cancels). Returns an index, or "all" when `allow_all` and
+        the user chose "open all", or raises on cancel."""
         self._pick_event = threading.Event()
         self._pick_result = None
-        self._js("showPicker", labels)
+        self._js("showPicker", labels, allow_all)
         self._pick_event.wait()
         if self._pick_result is None:
             raise RuntimeError("Cancelled — no ticket selected.")
@@ -139,10 +140,20 @@ class Api:
     # --- shared steps ----------------------------------------------------
 
     def _open_order(self, want_so, want_ra):
-        query = detect_order_number(log=self._status, pick_page=self._pick_page)
-        if not query:
+        queries = detect_order_numbers(log=self._status, pick_page=self._pick_page)
+        if not queries:
             return "no order number found"
-        return self._open_order_records(query, want_so, want_ra)
+        if len(queries) == 1:
+            return self._open_order_records(queries[0], want_so, want_ra)
+
+        # "open all" across multiple eDesk tickets — one NetSuite pass each
+        parts = []
+        for q in queries:
+            try:
+                parts.append(f"{q}: {self._open_order_records(q, want_so, want_ra)}")
+            except Exception as e:
+                parts.append(f"{q}: {e}")
+        return f"{len(queries)} tickets — " + " | ".join(parts)
 
     def _open_order_records(self, query, want_so, want_ra):
         """Opens exactly what's asked for: Sales Order, Return Authorization,

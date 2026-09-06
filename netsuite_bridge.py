@@ -7,22 +7,49 @@ from urllib.parse import urljoin
 
 from playwright.sync_api import sync_playwright
 
-from chrome_utils import find_active_page, open_background_tab
+from chrome_utils import open_background_tab
 
 CDP_URL = "http://localhost:9222"
 
 SEARCH_INPUT_SELECTORS = [
+    "input[placeholder='Search']",
+    "input[placeholder*='Search' i]",
     "#nsSearchField",
     "input[title='Search']",
-    "input[placeholder*='Search' i]",
-    # Last resort: brittle absolute path from this account's actual DOM,
-    # in case the selectors above don't match this NetSuite instance/theme.
-    "xpath=/html/body/div[1]/div[2]/div/div[1]/div[2]/input",
 ]
 
 
+def _search_box(page):
+    """The NetSuite global-search input on `page`, or None. Some page types
+    (Task, Media Item, a few dashboards) don't render the global search bar
+    at all, so this doubles as a "is this a usable tab?" check."""
+    for sel in SEARCH_INPUT_SELECTORS:
+        try:
+            loc = page.locator(sel)
+            if loc.count() > 0:
+                return loc.first
+        except Exception:
+            continue
+    return None
+
+
 def _find_netsuite_page(context):
-    return find_active_page(context, "netsuite.com")
+    """Pick a NetSuite tab that actually has the global search bar. Several
+    NetSuite tabs are normally open (every opened Sales Order / RA is its own
+    tab) and many report themselves "visible", so "first visible netsuite.com
+    tab" isn't enough — it lands on a Task or Media Item page with no search
+    box. Filter to tabs that have the box, then prefer a visible one."""
+    ns_pages = [p for p in context.pages if "netsuite.com" in p.url]
+    with_search = [p for p in ns_pages if _search_box(p) is not None]
+    if not with_search:
+        return None
+    for p in with_search:
+        try:
+            if p.evaluate("document.visibilityState") == "visible":
+                return p
+        except Exception:
+            continue
+    return with_search[0]
 
 
 def _connect():
@@ -42,8 +69,8 @@ def _get_netsuite_page(browser):
     page = _find_netsuite_page(context)
     if page is None:
         raise RuntimeError(
-            "No NetSuite tab found in the automation Chrome window. "
-            "Open your NetSuite dashboard there first."
+            "No NetSuite tab with the global search bar. Open your NetSuite "
+            "dashboard (or any standard record page) in the automation window."
         )
     return context, page
 
@@ -54,13 +81,7 @@ def _type_into_search(page, query: str, log):
     # currently looking at.
     log(f"Found NetSuite tab: {page.url}")
 
-    search_box = None
-    for sel in SEARCH_INPUT_SELECTORS:
-        loc = page.locator(sel)
-        if loc.count() > 0:
-            search_box = loc.first
-            break
-
+    search_box = _search_box(page)
     if search_box is None:
         raise RuntimeError(
             "Could not find the NetSuite global search box (selectors need "
