@@ -49,7 +49,14 @@
     overflow: hidden;
   }
 
-  body { padding: 0 11px 10px; }
+  /* everything lives in #app so the window-scale setting can zoom it as one
+     unit (zoom, not transform: scale — zoom reflows, so the body grows with it
+     and nothing gets clipped by overflow:hidden). */
+  #app {
+    position: relative;
+    width: 300px;
+    padding: 0 11px 10px;
+  }
 
   .titlebar {
     display: flex;
@@ -59,10 +66,12 @@
     padding: 9px 0 0;
     -webkit-app-region: drag;
   }
-  .winbtns { display: flex; gap: 2px; -webkit-app-region: no-drag; }
+  .winbtns { display: flex; gap: 1px; -webkit-app-region: no-drag; }
   .winbtns button {
     appearance: none; border: 0; background: transparent;
-    color: var(--green); font: inherit; font-size: 13px;
+    color: var(--green);
+    font-family: "Segoe UI Symbol", "Segoe UI", sans-serif;
+    font-size: 13px;
     cursor: pointer; padding: 1px 5px; line-height: 1; border-radius: 4px;
   }
   .winbtns button:hover { color: var(--mint); background: rgba(230,243,234,.08); }
@@ -180,6 +189,34 @@
   input[type="text"]::placeholder { color: var(--green); }
   input[type="text"]:focus { box-shadow: inset 0 0 0 2px rgba(120, 190, 160, .5); }
 
+  /* ---- settings popover (window scale) ---- */
+  .settings {
+    position: absolute;
+    top: 27px; right: 11px;
+    z-index: 40;
+    -webkit-app-region: no-drag;
+    background: var(--bg);
+    box-shadow: 0 0 0 1px var(--well-line), 0 8px 22px rgba(0, 0, 0, .45);
+    border-radius: 8px;
+    padding: 9px;
+  }
+  .settings-label {
+    font-family: var(--mono);
+    font-size: 8.5px;
+    letter-spacing: .5px;
+    color: var(--green);
+    margin-bottom: 6px;
+  }
+  .scale-opts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+  .scale-opts button {
+    font-family: var(--mono); font-size: 9.5px;
+    background: var(--tile-row1); color: var(--mint);
+    border: 0; border-radius: 5px; padding: 6px 2px; cursor: pointer;
+    transition: filter .12s ease;
+  }
+  .scale-opts button:hover { filter: brightness(1.15); }
+  .scale-opts button[aria-current="true"] { background: var(--sage); color: var(--on-sage); }
+
   .overlay {
     position: fixed; inset: 0;
     background: rgba(3, 12, 12, .84);
@@ -228,11 +265,23 @@
 </style>
 </head>
 <body>
+<div id="app">
   <div class="titlebar">
     <h1>eDesk &amp; NetSuite</h1>
     <div class="winbtns">
+      <button id="gearBtn" title="Settings">&#x2699;</button>
       <button id="minBtn" title="Minimize">&#x2013;</button>
       <button id="closeBtn" title="Close">&#x2715;</button>
+    </div>
+  </div>
+
+  <div class="settings" id="settings" hidden>
+    <div class="settings-label">WINDOW SCALE</div>
+    <div class="scale-opts" id="scaleOpts">
+      <button data-scale="1">1&times;</button>
+      <button data-scale="1.25">1.25&times;</button>
+      <button data-scale="1.5">1.5&times;</button>
+      <button data-scale="2">2&times;</button>
     </div>
   </div>
 
@@ -262,9 +311,11 @@
       <button class="cancel" id="pickCancel">Cancel</button>
     </div>
   </div>
+</div>
 
 <script>
   const $ = (id) => document.getElementById(id);
+  const appEl = $("app");
   const tiles = [...document.querySelectorAll(".tile")];
   const controls = [...document.querySelectorAll(".tile, .btn")];
 
@@ -283,6 +334,40 @@
   function callApi(fn, ...args) {
     if (window.pywebview && window.pywebview.api) window.pywebview.api[fn](...args);
   }
+
+  // ---- window scale ----
+  const SCALES = [1, 1.25, 1.5, 2];
+  let scale = 1;
+  try {
+    const saved = parseFloat(localStorage.getItem("ednis-scale"));
+    if (SCALES.includes(saved)) scale = saved;
+  } catch (e) {}
+
+  function applyScale(s, save) {
+    scale = SCALES.includes(s) ? s : 1;
+    appEl.style.zoom = scale === 1 ? "" : scale;
+    [...$("scaleOpts").children].forEach(b => {
+      b.setAttribute("aria-current", String(parseFloat(b.dataset.scale) === scale));
+    });
+    if (save) { try { localStorage.setItem("ednis-scale", String(scale)); } catch (e) {} }
+    fitWindow();
+  }
+
+  $("gearBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    $("settings").hidden = !$("settings").hidden;
+  });
+  document.addEventListener("click", (e) => {
+    if (!$("settings").hidden && !$("settings").contains(e.target) && e.target !== $("gearBtn")) {
+      $("settings").hidden = true;
+    }
+  });
+  [...$("scaleOpts").children].forEach(b => {
+    b.addEventListener("click", () => {
+      applyScale(parseFloat(b.dataset.scale), true);
+      $("settings").hidden = true;
+    });
+  });
 
   $("minBtn").addEventListener("click", () => callApi("minimize"));
   $("closeBtn").addEventListener("click", () => callApi("close"));
@@ -308,18 +393,22 @@
     callApi("resolve_pick", null);
   });
 
-  // Ask the native window to hug our rendered height — the status box grows
-  // and shrinks with its text, so this runs on every status change too.
+  // Ask the native window to hug our rendered size (x window scale). Runs on
+  // load, on every status change (the box grows with its text), and on scale.
   let fitTimer;
   function fitWindow() {
     clearTimeout(fitTimer);
     fitTimer = setTimeout(() => {
-      callApi("fit", Math.ceil(document.body.getBoundingClientRect().height));
+      // getBoundingClientRect reflects the zoom, so this is the real on-screen
+      // size at any scale.
+      const r = appEl.getBoundingClientRect();
+      callApi("fit", Math.ceil(r.width), Math.ceil(r.height));
     }, 30);
   }
   function scheduleFit() { fitWindow(); setTimeout(fitWindow, 90); }
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleFit);
   window.addEventListener("load", scheduleFit);
+  applyScale(scale, false);
 
   window.app = {
     setStatus(text, state) {

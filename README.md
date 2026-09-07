@@ -183,9 +183,10 @@ or manually:
 python command_center.py
 ```
 
-A small (300px-wide) frameless panel appears, pinned on top — drag it anywhere by
-the body, **–** to minimize, **✕** to close. It auto-sizes its height to fit its
-contents (the status line at the bottom grows with longer messages). Tap the
+A small frameless panel appears, pinned on top — drag it anywhere by the body,
+**⚙** for the window-scale setting (1× / 1.25× / 1.5× / 2×, remembered between
+runs), **–** to minimize, **✕** to close. It auto-sizes to fit its contents at
+any scale (the status line at the bottom grows with longer messages). Tap the
 tiles for what you want to open, then click **Open Selected**. For a ticket with
 no order number, paste one into the manual box and press Enter.
 

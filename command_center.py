@@ -78,11 +78,12 @@ class Api:
     def close(self):
         self._window.destroy()
 
-    def fit(self, height):
-        """Called from the page once it knows its rendered height, so the
-        frameless window hugs the content instead of leaving dead space."""
+    def fit(self, width, height):
+        """Called from the page whenever its rendered size changes (content,
+        status text, or window-scale setting) so the frameless window hugs it
+        instead of leaving dead space or clipping."""
         try:
-            self._window.resize(WIN_W, max(200, int(round(height))))
+            self._window.resize(max(220, int(round(width))), max(150, int(round(height))))
         except Exception:
             pass
 
@@ -196,7 +197,7 @@ def main():
         js_api=api,
         width=WIN_W,
         height=360,
-        min_size=(WIN_W, 200),
+        min_size=(220, 150),
         frameless=True,
         on_top=True,
         background_color="#0e2b2b",
