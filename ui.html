@@ -216,6 +216,13 @@
   }
   .scale-opts button:hover { filter: brightness(1.15); }
   .scale-opts button[aria-current="true"] { background: var(--sage); color: var(--on-sage); }
+  .settings-label + .scale-opts + .settings-label { margin-top: 10px; }
+  .opacity-row { display: flex; align-items: center; gap: 8px; }
+  .opacity-row input[type="range"] { flex: 1; min-width: 0; accent-color: var(--sage); cursor: pointer; }
+  .opacity-val {
+    font-family: var(--mono); font-size: 9.5px; color: var(--mint);
+    min-width: 3.2em; text-align: right;
+  }
 
   .overlay {
     position: fixed; inset: 0;
@@ -282,6 +289,11 @@
       <button data-scale="1.25">1.25&times;</button>
       <button data-scale="1.5">1.5&times;</button>
       <button data-scale="2">2&times;</button>
+    </div>
+    <div class="settings-label">OPACITY</div>
+    <div class="opacity-row">
+      <input type="range" id="opacityRange" min="30" max="100" step="5" value="100" />
+      <span class="opacity-val" id="opacityVal">100%</span>
     </div>
   </div>
 
@@ -368,6 +380,31 @@
       $("settings").hidden = true;
     });
   });
+
+  // ---- window opacity (native window opacity, applied by Api.set_opacity) ----
+  const MIN_OPACITY = 0.3;
+  let opacity = 1;
+  try {
+    const saved = parseFloat(localStorage.getItem("ednis-opacity"));
+    if (saved >= MIN_OPACITY && saved <= 1) opacity = saved;
+  } catch (e) {}
+
+  function applyOpacity(v, save) {
+    opacity = Math.min(1, Math.max(MIN_OPACITY, v));
+    const pct = Math.round(opacity * 100);
+    $("opacityRange").value = pct;
+    $("opacityVal").textContent = pct + "%";
+    callApi("set_opacity", opacity);
+    if (save) { try { localStorage.setItem("ednis-opacity", String(opacity)); } catch (e) {} }
+  }
+  // pywebview's easy-drag moves the window on any mousedown + mouse move; keep
+  // that from firing while the user drags the slider thumb.
+  $("opacityRange").addEventListener("mousedown", (e) => e.stopPropagation());
+  $("opacityRange").addEventListener("input", (e) => applyOpacity(e.target.value / 100, false));
+  $("opacityRange").addEventListener("change", (e) => applyOpacity(e.target.value / 100, true));
+  // the pywebview api isn't attached yet when this script first runs
+  window.addEventListener("pywebviewready", () => applyOpacity(opacity, false));
+  applyOpacity(opacity, false);
 
   $("minBtn").addEventListener("click", () => callApi("minimize"));
   $("closeBtn").addEventListener("click", () => callApi("close"));

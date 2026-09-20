@@ -23,11 +23,15 @@ from order_parser import parse_order_number
 
 HTML_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.html")
 WIN_W = 300
+STORAGE_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "EDNIS", "webview"
+)
 
 
 class Api:
     """Exposed to the page as `window.pywebview.api`. Only public (non-`_`)
-    methods are reachable from JS: open_selected, search_manual, resolve_pick."""
+    methods are reachable from JS: open_selected, search_manual, resolve_pick,
+    minimize, close, fit, set_opacity."""
 
     def __init__(self):
         # NOTE: everything here is underscore-prefixed on purpose. pywebview
@@ -77,6 +81,23 @@ class Api:
 
     def close(self):
         self._window.destroy()
+
+    def set_opacity(self, value):
+        """Sets the whole window's opacity (0.3-1.0). Uses the native WinForms
+        Form.Opacity — CSS opacity would only dim the page inside an opaque
+        window. Must run on the form's UI thread, hence Invoke."""
+        try:
+            from System import Func, Type  # pythonnet is only loaded once webview starts
+
+            opacity = min(1.0, max(0.3, float(value)))
+            form = self._window.native
+
+            def _apply():
+                form.Opacity = opacity
+
+            form.Invoke(Func[Type](_apply))
+        except Exception:
+            pass
 
     def fit(self, width, height):
         """Called from the page whenever its rendered size changes (content,
@@ -203,7 +224,9 @@ def main():
         background_color="#0e2b2b",
     )
     api._bind(window)
-    webview.start()
+    # private_mode=False so the page's localStorage (window scale, opacity)
+    # survives restarts; pywebview discards it by default.
+    webview.start(private_mode=False, storage_path=STORAGE_DIR)
 
 
 if __name__ == "__main__":
