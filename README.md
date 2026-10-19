@@ -229,8 +229,8 @@ python command_center.py
 
 `pywebview` uses the OS webview — WebKit (via `pywebview[qt]` or the system
 GTK/WebKit) on Linux, the native WebKit on macOS. Install the matching extra if
-prompted (`pip install 'pywebview[qt]'` or `[gtk]`). Nothing in the Python code
-is Windows-specific.
+prompted (`pip install 'pywebview[qt]'` or `[gtk]`). The only Windows-specific
+part is the opacity slider, which does nothing on macOS or Linux.
 
 ---
 

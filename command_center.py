@@ -23,15 +23,15 @@ from order_parser import parse_order_number
 
 HTML_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui.html")
 WIN_W = 300
-STORAGE_DIR = os.path.join(
-    os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "EDNIS", "webview"
+SETTINGS_FILE = os.path.join(
+    os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"), "EDNIS", "settings.json"
 )
 
 
 class Api:
     """Exposed to the page as `window.pywebview.api`. Only public (non-`_`)
     methods are reachable from JS: open_selected, search_manual, resolve_pick,
-    minimize, close, fit, set_opacity."""
+    minimize, close, fit, set_opacity, get_settings, save_setting."""
 
     def __init__(self):
         # NOTE: everything here is underscore-prefixed on purpose. pywebview
@@ -81,6 +81,30 @@ class Api:
 
     def close(self):
         self._window.destroy()
+
+    def get_settings(self):
+        """Saved window scale and opacity, or {} if none saved or the file is
+        unreadable. A plain JSON file instead of the page's localStorage: that
+        needs a persistent browser profile, which pins pywebview's local server
+        to one fixed port, so a second launch gets a window whose buttons all
+        fail."""
+        try:
+            with open(SETTINGS_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def save_setting(self, key, value):
+        # shortcut: read-modify-write without a lock, fine for human-paced saves
+        data = self.get_settings()
+        data[key] = value
+        try:
+            os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+        except OSError:
+            pass  # a setting that fails to save must not break the panel
 
     def set_opacity(self, value):
         """Sets the whole window's opacity (0.3-1.0). Uses the native WinForms
@@ -224,9 +248,7 @@ def main():
         background_color="#0e2b2b",
     )
     api._bind(window)
-    # private_mode=False so the page's localStorage (window scale, opacity)
-    # survives restarts; pywebview discards it by default.
-    webview.start(private_mode=False, storage_path=STORAGE_DIR)
+    webview.start()
 
 
 if __name__ == "__main__":

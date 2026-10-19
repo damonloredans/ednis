@@ -350,10 +350,6 @@
   // ---- window scale ----
   const SCALES = [1, 1.25, 1.5, 2];
   let scale = 1;
-  try {
-    const saved = parseFloat(localStorage.getItem("ednis-scale"));
-    if (SCALES.includes(saved)) scale = saved;
-  } catch (e) {}
 
   function applyScale(s, save) {
     scale = SCALES.includes(s) ? s : 1;
@@ -361,7 +357,7 @@
     [...$("scaleOpts").children].forEach(b => {
       b.setAttribute("aria-current", String(parseFloat(b.dataset.scale) === scale));
     });
-    if (save) { try { localStorage.setItem("ednis-scale", String(scale)); } catch (e) {} }
+    if (save) callApi("save_setting", "scale", scale);
     fitWindow();
   }
 
@@ -384,10 +380,6 @@
   // ---- window opacity (native window opacity, applied by Api.set_opacity) ----
   const MIN_OPACITY = 0.3;
   let opacity = 1;
-  try {
-    const saved = parseFloat(localStorage.getItem("ednis-opacity"));
-    if (saved >= MIN_OPACITY && saved <= 1) opacity = saved;
-  } catch (e) {}
 
   function applyOpacity(v, save) {
     opacity = Math.min(1, Math.max(MIN_OPACITY, v));
@@ -395,16 +387,24 @@
     $("opacityRange").value = pct;
     $("opacityVal").textContent = pct + "%";
     callApi("set_opacity", opacity);
-    if (save) { try { localStorage.setItem("ednis-opacity", String(opacity)); } catch (e) {} }
+    if (save) callApi("save_setting", "opacity", opacity);
   }
   // pywebview's easy-drag moves the window on any mousedown + mouse move; keep
   // that from firing while the user drags the slider thumb.
   $("opacityRange").addEventListener("mousedown", (e) => e.stopPropagation());
   $("opacityRange").addEventListener("input", (e) => applyOpacity(e.target.value / 100, false));
   $("opacityRange").addEventListener("change", (e) => applyOpacity(e.target.value / 100, true));
-  // the pywebview api isn't attached yet when this script first runs
-  window.addEventListener("pywebviewready", () => applyOpacity(opacity, false));
   applyOpacity(opacity, false);
+
+  // Saved settings live in a JSON file Python owns (Api.get_settings), not
+  // localStorage. The api isn't attached when this script first runs, so the
+  // defaults above paint first and the saved values apply once it is.
+  window.addEventListener("pywebviewready", () => {
+    window.pywebview.api.get_settings().then((s) => {
+      if (SCALES.includes(s.scale)) applyScale(s.scale, false);
+      if (typeof s.opacity === "number") applyOpacity(s.opacity, false);
+    });
+  });
 
   $("minBtn").addEventListener("click", () => callApi("minimize"));
   $("closeBtn").addEventListener("click", () => callApi("close"));
